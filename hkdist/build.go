@@ -34,7 +34,14 @@ type Build struct {
 	ver    string
 }
 
-func (b *Build) Platform() string {
+func (b *Build) filename() string {
+	if b.OS == "windows" {
+		return b.Name + ".exe"
+	}
+	return b.Name
+}
+
+func (b *Build) platform() string {
 	return b.OS + "-" + b.Arch
 }
 
@@ -53,7 +60,7 @@ func (b *Build) Run() error {
 	if err != nil {
 		return err
 	}
-	body, err := os.Open(b.Name)
+	body, err := os.Open(b.filename())
 	if err != nil {
 		return fmt.Errorf("open failure: %s", err)
 	}
@@ -118,8 +125,8 @@ func (b *Build) cloneAndBuild() (err error) {
 	if err != nil {
 		return fmt.Errorf("error writing relver.go: %s", err)
 	}
-	log.Printf("GOOS=%s GOARCH=%s go build -tags release -o %s\n", b.OS, b.Arch, b.Name)
-	cmd := exec.Command("go", "build", "-tags", "release", "-o", b.Name)
+	log.Printf("GOOS=%s GOARCH=%s go build -tags release -o %s\n", b.OS, b.Arch, b.filename())
+	cmd := exec.Command("go", "build", "-tags", "release", "-o", b.filename())
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append([]string{fmt.Sprintf("GOOS=%s", b.OS), fmt.Sprintf("GOARCH=%s", b.Arch)}, os.Environ()...)
@@ -135,6 +142,9 @@ func (b *Build) upload(r io.Reader) error {
 	buf := new(bytes.Buffer)
 	gz, _ := gzip.NewWriterLevel(buf, gzip.BestCompression)
 	gz.Name = b.Name + "-" + b.ver
+	if b.OS == "windows" {
+		gz.Name += ".exe"
+	}
 	if _, err := io.Copy(gz, r); err != nil {
 		return err
 	}
@@ -195,7 +205,7 @@ func (b *Build) register(sha256 []byte) error {
 }
 
 func (b *Build) setCurVersion() error {
-	url := distURL + b.Name + "-" + b.Platform() + ".json"
+	url := distURL + b.Name + "-" + b.platform() + ".json"
 	buf := new(bytes.Buffer)
 	err := json.NewEncoder(buf).Encode(struct{ Version string }{b.ver})
 	if err != nil {
